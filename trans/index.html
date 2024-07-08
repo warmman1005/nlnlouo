@@ -1,0 +1,181 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>文件翻譯器</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/mammoth/1.4.2/mammoth.browser.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/FileSaver.js/2.0.5/FileSaver.min.js"></script>
+    <script src="https://unpkg.com/docx@7.1.0/build/index.js"></script>
+    <style>
+        body {
+            font-family: 'Arial', sans-serif;
+            background-color: #eef2f5;
+            margin: 0;
+            padding: 0;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+        }
+        .container {
+            background: white;
+            padding: 20px;
+            border-radius: 10px;
+            box-shadow: 0 0 20px rgba(0, 0, 0, 0.1);
+            width: 100%;
+            max-width: 600px;
+            text-align: center;
+        }
+        h1 {
+            color: #333;
+            margin-bottom: 20px;
+        }
+        input, select, button {
+            padding: 10px;
+            margin-top: 10px;
+            border: 1px solid #ccc;
+            border-radius: 5px;
+            width: calc(100% - 22px);
+            box-sizing: border-box;
+        }
+        button {
+            background-color: #007BFF;
+            color: white;
+            cursor: pointer;
+            width: calc(100% - 22px);
+        }
+        button:hover {
+            background-color: #0056b3;
+        }
+        #translationOutput {
+            margin-top: 20px;
+            padding: 10px;
+            border: 1px solid #ccc;
+            border-radius: 5px;
+            background-color: #f9f9f9;
+            word-wrap: break-word;
+            max-height: 300px;
+            overflow-y: auto;
+        }
+        .hidden {
+            display: none;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>文件翻譯</h1>
+        <input type="file" id="fileInput" accept=".docx,.txt">
+        <select id="languageSelect">
+            <option value="en">英文</option>
+            <option value="zh-TW">繁體中文</option>
+            <option value="ja">日文</option>
+            <option value="es">西班牙文</option>
+        </select>
+        <button onclick="translateDocument()">翻譯</button>
+        <div id="translationOutput" class="hidden"></div>
+        <button id="downloadButton" class="hidden" onclick="downloadWord()">下載翻譯結果</button>
+    </div>
+
+    <script>
+        let translatedText = '';
+
+        async function translateDocument() {
+            const fileInput = document.getElementById('fileInput');
+            const languageSelect = document.getElementById('languageSelect');
+            const outputDiv = document.getElementById('translationOutput');
+            const downloadButton = document.getElementById('downloadButton');
+
+            if (fileInput.files.length === 0) {
+                alert('請上傳文件。');
+                return;
+            }
+
+            outputDiv.classList.remove('hidden');
+            outputDiv.innerText = '翻譯中...';
+            downloadButton.classList.add('hidden');
+
+            const file = fileInput.files[0];
+            const reader = new FileReader();
+
+            reader.onload = function(event) {
+                var fileContent = event.target.result;
+
+                let text = '';
+
+                if (file.type === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document') {
+                    mammoth.extractRawText({ arrayBuffer: fileContent })
+                        .then(function(result) {
+                            text = result.value;
+                            processText(text);
+                        })
+                        .catch(function(err) {
+                            console.error('處理文件出錯:', err);
+                            outputDiv.innerText = '處理文件出錯: ' + err.message;
+                        });
+                } else if (file.type === 'text/plain') {
+                    text = fileContent;
+                    processText(text);
+                } else {
+                    outputDiv.innerText = '不支持的文件格式';
+                }
+            };
+
+            reader.readAsArrayBuffer(file);
+
+            function processText(text) {
+                const targetLanguage = languageSelect.value;
+
+                fetch('https://你的後端服務器地址/translate', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        text: text,
+                        targetLanguage: targetLanguage
+                    })
+                })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.error) {
+                        outputDiv.innerText = `錯誤：${data.error}`;
+                    } else {
+                        translatedText = data.translatedText;
+                        outputDiv.innerText = translatedText;
+                        downloadButton.classList.remove('hidden');
+                    }
+                })
+                .catch(function(err) {
+                    console.error('處理文件出錯:', err);
+                    outputDiv.innerText = '處理文件出錯: ' + err.message;
+                });
+            }
+        }
+
+        function downloadWord() {
+            const { Document, Packer, Paragraph, TextRun } = window.docx;
+
+            const doc = new Document({
+                sections: [{
+                    properties: {},
+                    children: [
+                        new Paragraph({
+                            children: [
+                                new TextRun(document.getElementById('translationOutput').innerText)
+                            ]
+                        })
+                    ]
+                }]
+            });
+
+            Packer.toBlob(doc).then(blob => {
+                saveAs(blob, 'translated.docx');
+            }).catch(err => {
+                console.error('生成Word文件出錯:', err);
+            });
+        }
+    </script>
+</body>
+</html>
